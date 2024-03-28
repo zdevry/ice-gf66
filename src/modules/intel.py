@@ -15,14 +15,16 @@ WRITE_CACHE_UVOLT_PREFIX = f'0x80000{CACHE_DIGIT}1{WRITE_DIGIT}'
 REGISTER_TURBO_BOOST = '0x1ad'
 
 def read_turbo_boost(dry):
+    print('\x1b[1;93mCurrent Turbo Boost ratios:\x1b[0m')
+
     if dry:
         print(f'\x1b[1;94mexec:\x1b[0m '
             f'rdmsr {REGISTER_TURBO_BOOST} '
             f'\x1b[1;95m(read as array of turbo boost ratios)\x1b[0m')
         return
 
-def set_turbo_boost(ratio, dry, quiet):
-    set_turbo_boost_arg = f'{ratio:02x}' * 8
+def set_turbo_boost(ratios, dry, quiet):
+    set_turbo_boost_arg = ''.join([ f'{r:02x}' for r in ratios ])
     
     # TODO: better msg
     if not quiet:
@@ -51,7 +53,7 @@ def read_cache_uvolt(dry):
     return read_plane_undervolt(READ_CPU_UVOLT_ARG, 'cache', dry)
 
 def read_undervolt(dry):
-    print('\x1b[1;92mRead CPU undervolt\x1b[0m')
+    print('\x1b[1;93mCurrent CPU undervolt:\x1b[0m')
 
     cpu_uvolt = read_cpu_uvolt(dry)
     cache_uvolt = read_cache_uvolt(dry)

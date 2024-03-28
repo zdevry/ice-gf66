@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 from argparse import ArgumentParser, SUPPRESS as ARG_SUPRESS
-from os import geteuid
+from os import geteuid, path
 from sys import exit
 import check
 
 import modules.intel
+import modules.msi_ec
 
 
 BAT_LIMIT_NAME = 'bat_limit'
@@ -47,39 +48,80 @@ def add_args():
         help='do a dry run; do not execute actual system read and writes, '
         'does not require sudo to run')
 
-    add_rwarg(('-b', '--bat'),
+    add_rwarg(('-b',),
         'gets or sets the battery charge limit',
         metavar='LIMIT', type=check.bat_limit, dest=BAT_LIMIT_NAME)
-    add_rwarg(('-c', '--cooler'),
-        'gets or sets the state of the cooler boost fan speed',
+    add_rwarg(('-c',),
+        'sets the state of the cooler boost fan speed, toggles it if no option provided',
         metavar=None, choices=['on', 'off'], dest=COOLER_BOOST_NAME)
-    add_rwarg(('-s', '--shift'),
+    add_rwarg(('-s',),
         'gets or sets the shift mode/performance mode',
         metavar=None, choices=['eco', 'comfort', 'sport', 'turbo'], dest=SHIFT_MODE_NAME)
-    add_rwarg(('-f', '--fan'),
+    add_rwarg(('-f',),
         'gets or sets the fan mode setting',
         metavar=None, choices=['auto', 'silent', 'advanced'], dest=FAN_MODE_NAME)
 
-    add_rwarg(('-t', '--boost'),
+    add_rwarg(('-t',),
         'gets or sets the turbo boost ratio of the Intel CPU',
         metavar='RATIO', type=check.turbo_ratio, dest=TURBO_BOOST_NAME)
-    add_rwarg(('-u', '--uvolt'),
+    add_rwarg(('-u',),
         'gets or sets the negative voltage offset of the Intel CPU in units '
         'of mV (get) or 1/1.024 ~ 0.977mV (set)',
         metavar='OFFSET', type=check.undervolt, dest=UNDERVOLT_NAME)
 
-    add_warg(('-C', '--nvc'),
+    add_warg(('-C',),
         'sets the minimum and maximum frequency of the NVidia GPU '
         'specified in the format MIN,MAX (MHz)',
         metavar='MIN,MAX', type=check.nvclock, dest=NVCLOCK_LIMIT_NAME)
-    add_warg(('-O', '--nvo'),   
+    add_warg(('-O',),
         'sets the clock offset of the NVidia GPU',
         metavar='OFFSET', type=check.nvoffset, dest=NVCLOCK_OFFSET_NAME)
 
-
-def run(args):
+def msi_ec_sys(args):
     dry = args.dry
     quiet = args.quiet
+
+    if not dry and not path.exists('/sys/kernel/debug/ec/ec0/io'):
+        print('\x1b[1;91mWARN: ec_sys kernel module has not been loaded, '
+            'anything interfacing with it will not execute\x1b[0m')
+        return
+    
+    if BAT_LIMIT_NAME in args:
+        limit = getattr(args, BAT_LIMIT_NAME)
+        if limit is None:
+            modules.msi_ec.get_bat_limit(dry)
+        else:
+            modules.msi_ec.set_bat_limit(limit, dry, quiet)
+
+    if SHIFT_MODE_NAME in args:
+        mode = getattr(args, SHIFT_MODE_NAME)
+        if mode is None:
+            modules.msi_ec.get_shift_mode(dry)
+        else:
+            modules.msi_ec.set_shift_mode(mode, dry, quiet)
+    
+    if FAN_MODE_NAME in args:
+        mode = getattr(args, FAN_MODE_NAME)
+        if mode is None:
+            modules.msi_ec.get_fan_mode(dry)
+        else:
+            modules.msi_ec.set_fan_mode(mode, dry, quiet)
+    
+    if COOLER_BOOST_NAME in args:
+        boost = getattr(args, COOLER_BOOST_NAME)
+        if boost is None:
+            modules.msi_ec.toggle_cooler_boost(dry, quiet)
+        else:
+            modules.msi_ec.set_cooler_boost(boost, dry, quiet)
+
+def intel_msr(args):
+    dry = args.dry
+    quiet = args.quiet
+
+    if not dry and not path.exists('/dev/cpu/0/msr'):
+        print('\x1b[1;91mWARN: msr kernel module has not been loaded, '
+            'anything interfacing with it will not execute\x1b[0m')
+        return
 
     if TURBO_BOOST_NAME in args:
         ratios = getattr(args, TURBO_BOOST_NAME)
@@ -94,6 +136,12 @@ def run(args):
             modules.intel.read_undervolt(dry)
         else:
             modules.intel.undervolt(undervolt, dry, quiet)
+
+def run(args):
+    print(args)
+    msi_ec_sys(args)
+    intel_msr(args)
+    
 
 def main():
     add_args()

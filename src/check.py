@@ -2,8 +2,6 @@ from argparse import ArgumentTypeError
 import re
 
 def bat_limit(s):
-    if (s == 'READ'): return s
-
     if not str.isnumeric(s):
         raise ArgumentTypeError(f'{s} is not an integer value')
     v = int(s)
@@ -13,11 +11,9 @@ def bat_limit(s):
     return v
 
 def turbo_ratio(s):
-    if (s == 'READ'): return s
     return int(s)
 
 def undervolt(s):
-    if (s == 'READ'): return s
     return int(s)
 
 def nvclock(s):

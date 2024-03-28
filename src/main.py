@@ -7,6 +7,7 @@ import check
 
 import modules.intel
 import modules.msi_ec
+import modules.nvidia
 
 
 BAT_LIMIT_NAME = 'bat_limit'
@@ -137,10 +138,34 @@ def intel_msr(args):
         else:
             modules.intel.undervolt(undervolt, dry, quiet)
 
+nv_persistence = False # Assumed
+def nv_check_persistence(dry, quiet):
+    global nv_persistence
+    if nv_persistence: return
+
+    modules.nvidia.set_persistence_mode(dry, quiet)
+    nv_persistence = True
+
+def nvidia_clock(args):
+    dry = args.dry
+    quiet = args.quiet
+
+    nvc_limit = getattr(args, NVCLOCK_LIMIT_NAME)
+    nvc_offset = getattr(args, NVCLOCK_OFFSET_NAME)
+
+    if nvc_limit is not None:
+        nv_check_persistence(dry, quiet)
+        modules.nvidia.set_clock_limit(nvc_limit, dry, quiet)
+
+    if nvc_offset is not None:
+        nv_check_persistence(dry, quiet)
+        modules.nvidia.set_clock_offset(nvc_offset, dry, quiet)
+
+
 def run(args):
-    print(args)
     msi_ec_sys(args)
     intel_msr(args)
+    nvidia_clock(args)
     
 
 def main():

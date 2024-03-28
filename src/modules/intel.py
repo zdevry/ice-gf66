@@ -28,7 +28,7 @@ def set_turbo_boost(ratios, dry, quiet):
     
     # TODO: better msg
     if not quiet:
-        print(f'\x1b[1;93mApplying Turbo Boost Ratios...\x1b[0m')
+        print(f'\x1b[1;93mApplying Turbo Boost Ratios {ratios}...\x1b[0m')
 
     if dry:
         print(f'\x1b[1;94mexec:\x1b[0m '

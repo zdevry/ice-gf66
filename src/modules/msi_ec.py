@@ -38,12 +38,10 @@ ec_file_handle: TextIOWrapper | None = None
 
 def close_ec_file():
     if ec_file_handle is not None:
-        print('ec close')
         ec_file_handle.close()
 
 def open_ec_file():
     global ec_file_handle
-    print('ec open')
     ec_file_handle = open(EC_FILE, 'r+b')
 
 def read_ec_byte(addr, dry):
@@ -63,6 +61,17 @@ def write_ec_byte(addr, val, dry):
     if dry:
         print(f'\x1b[1;94mwrite:\x1b[0m '
             f'{EC_FILE}, addr: 0x{addr:02x}, byte: 0x{val:02x}')
+        return
+    
+    if ec_file_handle is None:
+        open_ec_file()
+
+    bstr = bytes([val])
+    
+    ec_file_handle.seek(addr)
+    nbytes_written = ec_file_handle.write(bstr)
+
+    print(f'Written {nbytes_written} Byte(s) to EC Memory')
 
 
 def get_shift_mode(dry):
@@ -122,7 +131,7 @@ def toggle_cooler_boost(dry):
         return
     
     write_byte = original ^ 0x80
-    print(f'write cooler boost {write_byte:02x}')
+    write_ec_byte(ADDR_COOLER_BOOST, write_byte, dry)
 
 def set_cooler_boost(boost, dry):
     print(f'\x1b[1;93mSetting cooler boost {boost}...\x1b[0m')
@@ -145,4 +154,4 @@ def set_cooler_boost(boost, dry):
         return
     
     write_byte = (original & 0x7f) | (0x80 if boost == 'on' else 0x00)
-    print(f'write cooler boost {write_byte:02x}')
+    write_ec_byte(ADDR_COOLER_BOOST, write_byte, dry)

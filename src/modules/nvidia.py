@@ -1,3 +1,5 @@
+from subprocess import run
+
 persistence_mode = False # Assumed
 
 def check_persistence_mode(dry):
@@ -12,6 +14,8 @@ def check_persistence_mode(dry):
         print('\x1b[1;94mexec:\x1b[0m '
             'nvidia-smi -pm 1')
         return
+    
+    run(['nvidia-smi', '-pm', '1'])
 
 def set_clock_limit(limit, dry):
     check_persistence_mode(dry)
@@ -21,6 +25,8 @@ def set_clock_limit(limit, dry):
         print('\x1b[1;94mexec:\x1b[0m '
             f'nvidia-smi -lgc {limit}')
         return
+    
+    run(['nvidia-smi', '-lgc', limit])
 
 def set_clock_offset(offset, dry):
     check_persistence_mode(dry)
@@ -30,3 +36,5 @@ def set_clock_offset(offset, dry):
         print('\x1b[1;94mexec:\x1b[0m '
             f'nvidia-settings -a [gpu:0]/GPUGraphicsClockOffsetAllPerformanceLevels={offset}')
         return
+    
+    run(['nvidia-settings', '-a', f'[gpu:0]/GPUGraphicsClockOffsetAllPerformanceLevels={offset}'])

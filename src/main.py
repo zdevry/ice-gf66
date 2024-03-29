@@ -42,37 +42,50 @@ def add_args():
     
     parser.add_argument('-d', '--dry',
         action='store_true',
-        help='do a dry run; do not execute actual system read and writes, '
-        'does not require sudo to run')
+        help='print out the commands/read/writes that the program would execute '
+        'instead of actually performing. Does not require sudo to run')
 
     add_rwarg(('-b',),
         'gets or sets the battery charge limit',
-        metavar='LIMIT', type=check.bat_limit, dest=BAT_LIMIT_NAME)
+        metavar='INT', type=check.bat_limit, dest=BAT_LIMIT_NAME)
     add_rwarg(('-c',),
         'sets the state of the cooler boost fan speed, toggles it if no option provided',
         metavar=None, choices=['on', 'off'], dest=COOLER_BOOST_NAME)
     add_rwarg(('-s',),
-        'gets or sets the shift mode/performance mode',
+        'gets or sets the shift mode/performance mode. Shift mode may also have been called '
+        '\'Performance\' in MSI center. Affects system performance and fan speed.',
         metavar=None, choices=['eco', 'comfort', 'sport', 'turbo'], dest=SHIFT_MODE_NAME)
     add_rwarg(('-f',),
         'gets or sets the fan mode setting',
         metavar=None, choices=['auto', 'silent', 'advanced'], dest=FAN_MODE_NAME)
 
     add_rwarg(('-t',),
-        'gets or sets the turbo boost ratio of the Intel CPU',
-        metavar='RATIO', type=check.turbo_ratio, dest=TURBO_BOOST_NAME)
+        'gets or sets the turbo boost ratios of the Intel CPU. Given in a comma separated list of '
+        'integers (no spaces). Each element gives the turbo boost ratio for when a certain amount of '
+        'cores are under load. For example: -t=36, sets all the boost ratios to 36. -t=34,35,36,37 '
+        'sets the 1-core boost to 37, 2-core to 36, 3-core to 35, and 4 to 8 cores boost ratio all set to 34. '
+        'If turbo boost is enabled, then this value is the CPU clock limit (when a given amount of cores '
+        'are under load) specified in multiples of 100MHz.',
+        metavar='INT,...', type=check.turbo_ratio, dest=TURBO_BOOST_NAME)
     add_rwarg(('-u',),
-        'gets or sets the negative voltage offset of the Intel CPU in units '
-        'of mV (get) or 1/1.024 ~ 0.977mV (set)',
-        metavar='OFFSET', type=check.undervolt, dest=UNDERVOLT_NAME)
+        'gets or sets the negative voltage offset of the Intel CPU. '
+        'The units for this is 1/1.024 ~ 0.977mV. To obtain the desired offset from a '
+        'millivolt offset value, multiply the offset value by 1.024, then round the value. e.g. '
+        '90mV undervolt -> 90 * 1.024 = 92.16 -> 92. Then \'-u 92\' is used to set this undervolt. '
+        'This option sets both the CPU Core offset and CPU Cache offset to the same undervolt value.',
+        metavar='INT', type=check.undervolt, dest=UNDERVOLT_NAME)
 
     add_warg(('-C',),
         'sets the minimum and maximum frequency of the NVidia GPU '
         'specified in the format MIN,MAX (MHz)',
         metavar='MIN,MAX', type=check.nvclock, dest=NVCLOCK_LIMIT_NAME)
     add_warg(('-O',),
-        'sets the clock offset of the NVidia GPU',
-        metavar='OFFSET', type=check.nvoffset, dest=NVCLOCK_OFFSET_NAME)
+        'sets the clock offset of the NVidia GPU in MHz. The GPU will run at a higher clock for a given '
+        'voltage. Conversely, for a given clock, the GPU will run at a lower voltage, thus undervolting it. '
+        'This requires some additional configuration to the X server to use and most likely does not work '
+        'on Wayland (wihout some jank to make it work). For more info, refer to '
+        'https://wiki.archlinux.org/title/NVIDIA/Tips_and_tricks#Overclocking_and_cooling',
+        metavar='INT', type=check.nvoffset, dest=NVCLOCK_OFFSET_NAME)
 
 def msi_ec_sys(args):
     dry = args.dry

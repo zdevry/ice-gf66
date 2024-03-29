@@ -23,12 +23,11 @@ def read_turbo_boost(dry):
             f'\x1b[1;95m(read as array of turbo boost ratios)\x1b[0m')
         return
 
-def set_turbo_boost(ratios, dry, quiet):
+def set_turbo_boost(ratios, dry):
     set_turbo_boost_arg = ''.join([ f'{r:02x}' for r in ratios ])
     
     # TODO: better msg
-    if not quiet:
-        print(f'\x1b[1;93mApplying Turbo Boost Ratios {ratios}...\x1b[0m')
+    print(f'\x1b[1;93mApplying Turbo Boost Ratios {ratios}...\x1b[0m')
 
     if dry:
         print(f'\x1b[1;94mexec:\x1b[0m '
@@ -68,13 +67,12 @@ def offset_bytes(offset):
     b = (-offset & 0x7ff) << 21
     return f'{b:08x}'
 
-def undervolt(offset, dry, quiet):
+def undervolt(offset, dry):
     uvolt_offset = offset_bytes(offset)
     cpu_uvolt_bytes = f'{WRITE_CPU_UVOLT_PREFIX}{uvolt_offset}'
     cache_uvolt_bytes = f'{WRITE_CACHE_UVOLT_PREFIX}{uvolt_offset}'
 
-    if not quiet:
-        print(f'\x1b[1;93mApplying CPU undervolt of {offset} units...\x1b[0m')
+    print(f'\x1b[1;93mApplying CPU undervolt of {offset} units...\x1b[0m')
 
     if dry:
         print(f'\x1b[1;94mexec:\x1b[0m '

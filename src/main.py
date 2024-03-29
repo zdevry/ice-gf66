@@ -39,10 +39,6 @@ def add_rarg(names, help, **kwargs):
     syscmds.add_argument(*names, action='store_true', help=help, **kwargs)
 
 def add_args():
-
-    parser.add_argument('-q', '--quiet',
-        action='store_true',
-        help='do not output feedback after writing to a system option')
     
     parser.add_argument('-d', '--dry',
         action='store_true',
@@ -80,7 +76,6 @@ def add_args():
 
 def msi_ec_sys(args):
     dry = args.dry
-    quiet = args.quiet
 
     if not dry and not path.exists('/sys/kernel/debug/ec/ec0/io'):
         print('\x1b[1;91mWARN: ec_sys kernel module has not been loaded, '
@@ -92,32 +87,33 @@ def msi_ec_sys(args):
         if limit is None:
             modules.msi_ec.get_bat_limit(dry)
         else:
-            modules.msi_ec.set_bat_limit(limit, dry, quiet)
+            modules.msi_ec.set_bat_limit(limit, dry)
 
     if SHIFT_MODE_NAME in args:
         mode = getattr(args, SHIFT_MODE_NAME)
         if mode is None:
             modules.msi_ec.get_shift_mode(dry)
         else:
-            modules.msi_ec.set_shift_mode(mode, dry, quiet)
+            modules.msi_ec.set_shift_mode(mode, dry)
     
     if FAN_MODE_NAME in args:
         mode = getattr(args, FAN_MODE_NAME)
         if mode is None:
             modules.msi_ec.get_fan_mode(dry)
         else:
-            modules.msi_ec.set_fan_mode(mode, dry, quiet)
+            modules.msi_ec.set_fan_mode(mode, dry)
     
     if COOLER_BOOST_NAME in args:
         boost = getattr(args, COOLER_BOOST_NAME)
         if boost is None:
-            modules.msi_ec.toggle_cooler_boost(dry, quiet)
+            modules.msi_ec.toggle_cooler_boost(dry)
         else:
-            modules.msi_ec.set_cooler_boost(boost, dry, quiet)
+            modules.msi_ec.set_cooler_boost(boost, dry)
+    
+    modules.msi_ec.close_ec_file()
 
 def intel_msr(args):
     dry = args.dry
-    quiet = args.quiet
 
     if not dry and not path.exists('/dev/cpu/0/msr'):
         print('\x1b[1;91mWARN: msr kernel module has not been loaded, '
@@ -129,37 +125,26 @@ def intel_msr(args):
         if ratios is None:
             modules.intel.read_turbo_boost(dry)
         else:
-            modules.intel.set_turbo_boost(ratios, dry, quiet)
+            modules.intel.set_turbo_boost(ratios, dry)
 
     if UNDERVOLT_NAME in args:
         undervolt = getattr(args, UNDERVOLT_NAME)
         if undervolt is None:
             modules.intel.read_undervolt(dry)
         else:
-            modules.intel.undervolt(undervolt, dry, quiet)
-
-nv_persistence = False # Assumed
-def nv_check_persistence(dry, quiet):
-    global nv_persistence
-    if nv_persistence: return
-
-    modules.nvidia.set_persistence_mode(dry, quiet)
-    nv_persistence = True
+            modules.intel.undervolt(undervolt, dry)
 
 def nvidia_clock(args):
     dry = args.dry
-    quiet = args.quiet
 
     nvc_limit = getattr(args, NVCLOCK_LIMIT_NAME)
     nvc_offset = getattr(args, NVCLOCK_OFFSET_NAME)
 
     if nvc_limit is not None:
-        nv_check_persistence(dry, quiet)
-        modules.nvidia.set_clock_limit(nvc_limit, dry, quiet)
+        modules.nvidia.set_clock_limit(nvc_limit, dry)
 
     if nvc_offset is not None:
-        nv_check_persistence(dry, quiet)
-        modules.nvidia.set_clock_offset(nvc_offset, dry, quiet)
+        modules.nvidia.set_clock_offset(nvc_offset, dry)
 
 
 def run(args):

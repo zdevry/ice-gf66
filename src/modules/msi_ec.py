@@ -1,3 +1,6 @@
+from io import TextIOWrapper
+
+
 EC_FILE = '/sys/kernel/debug/ec/ec0/io'
 
 ADDR_COOLER_BOOST = 0x98
@@ -31,12 +34,30 @@ FAN_MODES_BYTE_TO_NAME = {
     0x8d: 'advanced'
 }
 
+ec_file_handle: TextIOWrapper | None = None
+
+def close_ec_file():
+    if ec_file_handle is not None:
+        print('ec close')
+        ec_file_handle.close()
+
+def open_ec_file():
+    global ec_file_handle
+    print('ec open')
+    ec_file_handle = open(EC_FILE, 'r+b')
 
 def read_ec_byte(addr, dry):
     if dry:
         print(f'\x1b[1;94mread:\x1b[0m '
             f'{EC_FILE}, addr: 0x{addr:02x}')
         return None
+    
+    if ec_file_handle is None:
+        open_ec_file()
+    
+    ec_file_handle.seek(addr)
+    return ec_file_handle.read(1)[0]
+        
 
 def write_ec_byte(addr, val, dry):
     if dry:
@@ -50,9 +71,10 @@ def get_shift_mode(dry):
     mode = read_ec_byte(ADDR_SHIFT_MODE, dry)
     if dry: return
 
-def set_shift_mode(mode, dry, quiet):
-    if not quiet:
-        print(f'\x1b[1;93mSetting shift mode to {mode}...\x1b[0m')
+    print(SHIFT_MODES_BYTE_TO_NAME[mode])
+
+def set_shift_mode(mode, dry):
+    print(f'\x1b[1;93mSetting shift mode to {mode}...\x1b[0m')
     
     write_ec_byte(ADDR_SHIFT_MODE, SHIFT_MODES_NAME_TO_BYTE[mode], dry)
 
@@ -63,9 +85,10 @@ def get_fan_mode(dry):
     mode = read_ec_byte(ADDR_FAN_MODE, dry)
     if dry: return
 
-def set_fan_mode(mode, dry, quiet):
-    if not quiet:
-        print(f'\x1b[1;93mSetting fan mode to {mode}...\x1b[0m')
+    print(FAN_MODES_BYTE_TO_NAME[mode])
+
+def set_fan_mode(mode, dry):
+    print(f'\x1b[1;93mSetting fan mode to {mode}...\x1b[0m')
     
     write_ec_byte(ADDR_FAN_MODE, FAN_MODES_NAME_TO_BYTE[mode], dry)
 
@@ -73,21 +96,20 @@ def set_fan_mode(mode, dry, quiet):
 def get_bat_limit(dry):
     print('\x1b[1;93mBattery limit:\x1b[0m ', end='')
 
-    mode = read_ec_byte(ADDR_BAT_LIMIT, dry)
+    limit = read_ec_byte(ADDR_BAT_LIMIT, dry)
     if dry: return
 
-def set_bat_limit(limit, dry, quiet):
-    if not quiet:
-        print(f'\x1b[1;93mSetting battery limit to {limit}...\x1b[0m')
+    print(limit - 128)
+
+def set_bat_limit(limit, dry):
+    print(f'\x1b[1;93mSetting battery limit to {limit}...\x1b[0m')
     
     write_ec_byte(ADDR_BAT_LIMIT, limit + 128, dry)
 
 
-def toggle_cooler_boost(dry, quiet):
-    if not quiet:
-        print(f'\x1b[1;93mToggling cooler boost...\x1b[0m')
+def toggle_cooler_boost(dry):
+    print(f'\x1b[1;93mToggling cooler boost...\x1b[0m')
     
-    # Scary! (it will definitely delete your root fs)
     original = read_ec_byte(ADDR_COOLER_BOOST, dry)
     if dry:
         print(
@@ -96,27 +118,27 @@ def toggle_cooler_boost(dry, quiet):
             'The below value given in the dry run is not accurate '
             'and should actually be the read byte at 0x98 xor\'d with 0x80\x1b[0m'
         )
-        write_ec_byte(ADDR_COOLER_BOOST, 0x80, dry)
+        write_ec_byte(ADDR_COOLER_BOOST, 0x80, dry=True)
         return
+    
+    
 
-def set_cooler_boost(boost, dry, quiet):
-    if not quiet:
-        print(f'\x1b[1;93mSetting cooler boost {boost}...\x1b[0m')
+def set_cooler_boost(boost, dry):
+    print(f'\x1b[1;93mSetting cooler boost {boost}...\x1b[0m')
 
     original = read_ec_byte(ADDR_COOLER_BOOST, dry)
     if dry:
-        msg = 'the read byte or\'d with 0x80' if boost == 'on'\
-            else 'the read byte and\'d with 0x7f'
+        msg = 'set' if boost == 'on' else 'unset'
 
         print(
             '\x1b[90mNote: cooler boost set requires reading the EC memory first '
             'to get the original byte at the cooler boost address 0x98. '
             'The below value given in the dry run is not accurate '
-            f'and should actually be {msg}\x1b[0m'
+            f'and should actually be the read byte with the highest bit {msg}\x1b[0m'
         )
         write_ec_byte(
             ADDR_COOLER_BOOST,
             0x80 if boost == 'on' else 0x00,
-            dry
+            dry=True
         )
         return

@@ -1,0 +1,21 @@
+file = "/sys/kernel/debug/ec/ec0/io"
+
+bat_limit.addr = 0xD7
+cooler_boost.addr = 0x98
+
+[shift]
+addr = 0xD2
+
+[shift.enum]
+eco = 0xC2
+comfort = 0xC1
+sport = 0xC0
+turbo = 0xC4
+
+[fanmode]
+addr = 0xD4
+
+[fanmode.enum]
+auto = 0x0D
+silent = 0x1D
+advanced = 0x8D

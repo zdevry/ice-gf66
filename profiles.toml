@@ -1,0 +1,7 @@
+[gaming]
+msi_ec.shift = 'sport'
+msi_ec.fanmode = 'auto'
+intel.undervolt = { core = 80, cache = 80 }
+intel.turbo = [36]
+nvidia.clock = { min = 210, max = 1695 }
+nvidia.offset = 150

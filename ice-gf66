@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+
+
+import os
+import sys
+import tomllib
+
+
+SHIFT_NAME = 'shift'
+FANMODE_NAME = 'fanmode'
+EC_OPTS = (SHIFT_NAME, FANMODE_NAME)
+
+TURBO_NAME = 'turbo'
+UNDERVOLT_NAME = 'undervolt'
+
+NVCLOCK_NAME = 'nvclock'
+NVOFFSET_NAME = 'nvoffset'
+NV_OPTS = (NVCLOCK_NAME, NVOFFSET_NAME)
+
+CONFIG_FILE = 'config.toml'
+PROFILES_FILE = 'profiles.toml'
+
+
+
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        raise FileNotFoundError(CONFIG_FILE)
+
+    f_conf = open(CONFIG_FILE, 'rb')
+    conf = tomllib.load(f_conf)
+    f_conf.close()
+
+    return conf
+
+def load_profile(prof):
+    if not os.path.exists(PROFILES_FILE):
+        raise FileNotFoundError(PROFILES_FILE)
+    
+    f_prof = open(PROFILES_FILE, 'rb')
+    all_profiles = tomllib.load(f_prof)
+    f_prof.close()
+
+    if prof not in all_profiles:
+        raise Exception(f'Profile {prof} does not exist')
+
+    return all_profiles[prof]
+
+
+def write_profile(prof, conf):
+    if any(opt in prof for opt in EC_OPTS):
+        ec_conf = conf['ec']
+        ec = None
+        try:
+            if SHIFT_NAME in prof:
+                pass
+            if FANMODE_NAME in prof:
+                pass
+        finally:
+            pass # close ec file
+
+    num_cores = conf['msr']['num_cores']
+    if TURBO_NAME in prof:
+        pass
+    if UNDERVOLT_NAME in prof:
+        pass
+
+    if any(opt in prof for opt in NV_OPTS):
+        libnvml_path = conf['nv']['libnvml']
+        try:
+            if NVCLOCK_NAME in prof:
+                pass
+            if NVOFFSET_NAME in prof:
+                pass
+        finally:
+            pass # shutdown nvml
+
+
+def main():
+    conf = load_config()
+    
+    if len(sys.argv) != 2:
+        raise Exception('Can only provide exactly one argument')
+
+    prof = load_profile(sys.argv[1])
+    write_profile(prof, conf)
+
+if __name__ == '__main__':
+    main()

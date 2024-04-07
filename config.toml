@@ -1,5 +1,3 @@
-msr.num_cores = 12
-
 [ec]
 file = "/sys/kernel/debug/ec/ec0/io"
 
@@ -22,3 +20,9 @@ addr = 0xD4
 auto = 0x0D
 silent = 0x1D
 advanced = 0x8D
+
+[msr]
+num_cores = 12
+
+[nv]
+libnvml = "/usr/lib/libnvidia-ml.so"

@@ -2,9 +2,26 @@
 
 
 import os
-import sys
-import tomllib
+import ctypes
+from argparse import ArgumentParser
+from tomllib import load as load_toml
 
+
+MSR_FILE_FORMAT = '/dev/cpu/{}/msr'
+TURBO_REGISTER = 0x1AD
+UNDERVOLT_REGISTER = 0x150
+
+READ_BYTE = b'\x10'
+WRITE_BYTE = b'\x11'
+
+UVOLT_PLANE_BYTES = {
+    'core': b'\x00',
+    'igpu': b'\x01',
+    'cache': b'\x02',
+    'agent': b'\x03',
+    'analog_io': b'\x04',
+    'digital_io': b'\x05',
+}
 
 SHIFT_NAME = 'shift'
 FANMODE_NAME = 'fanmode'
@@ -17,56 +34,119 @@ NVCLOCK_NAME = 'nvclock'
 NVOFFSET_NAME = 'nvoffset'
 NV_OPTS = (NVCLOCK_NAME, NVOFFSET_NAME)
 
+EC_CONF_NAME = 'ec'
+MSR_CONF_NAME = 'msr'
+NV_CONF_NAME = 'nv'
+
+EC_ADDR_NAME = 'addr'
+EC_ENUM_NAME = 'enum'
+EC_BAT_LIMIT_NAME = 'bat_limit'
+EC_COOLER_BOOST_NAME = 'cooler_boost'
+
+MSR_NUM_CORES_NAME = 'num_cores'
+NV_LIBNVML_NAME = 'libnvml'
+
 CONFIG_FILE = 'config.toml'
 PROFILES_FILE = 'profiles.toml'
 
 
+def ec_write_byte(ec, byte, addr):
+    print(f'ec write 0x{byte:02x} to 0x{addr:02x}')
 
-
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        raise FileNotFoundError(CONFIG_FILE)
-
-    f_conf = open(CONFIG_FILE, 'rb')
-    conf = tomllib.load(f_conf)
-    f_conf.close()
-
-    return conf
-
-def load_profile(prof):
-    if not os.path.exists(PROFILES_FILE):
-        raise FileNotFoundError(PROFILES_FILE)
+def ec_write_enum(ec, name, conf, modename):
+    ec_enum = conf[EC_ENUM_NAME]
+    if name not in ec_enum:
+        raise ValueError(f'{name} is not a valid {modename}')
     
-    f_prof = open(PROFILES_FILE, 'rb')
-    all_profiles = tomllib.load(f_prof)
-    f_prof.close()
+    val = ec_enum[name]
+    addr = conf[EC_ADDR_NAME]
+    ec_write_byte(ec, val, addr)
 
-    if prof not in all_profiles:
-        raise Exception(f'Profile {prof} does not exist')
 
-    return all_profiles[prof]
+def wrmsr_on_cpu(reg, cpu, regval):
+    msr = MSR_FILE_FORMAT.format(cpu)
+    wrnum = int.from_bytes(regval, byteorder='little')
+    print(f'Write {regval} (0x{wrnum:016x}) to register {reg:04x} : {msr}')
+
+def wrmsr_on_all_cpus(reg, regval, num_cores):
+    for i in range(num_cores):
+        wrmsr_on_cpu(reg, i, regval)
+
+def write_turbo_boosts(boosts, num_cores):
+    tailing_boosts = 8 - len(boosts)
+    all_boosts = boosts + boosts[-1:-2:-1] * tailing_boosts
+
+    wrmsr_on_all_cpus(TURBO_REGISTER, bytes(all_boosts), num_cores)
+
+def undervolt_bytes(uvolt):
+    b = (-uvolt & 0x7FF) << 21
+    return b.to_bytes(4, byteorder='little')
+
+def write_undervolt(uvolts, num_cores):
+    for plane in uvolts:
+        if plane not in UVOLT_PLANE_BYTES:
+            continue
+        plane_byte = UVOLT_PLANE_BYTES[plane]
+        uvolt = uvolts[plane]
+        
+        regval = undervolt_bytes(uvolt) + WRITE_BYTE + plane_byte + b'\x00\x80'
+
+        wrmsr_on_all_cpus(UNDERVOLT_REGISTER, regval, num_cores)
+
+
+class NVMLError(Exception): pass
+
+def nvml_check_error(nvml_return):
+    if nvml_return != 0:
+        raise NVMLError(f'NVML error code {nvml_return}')
+
+def nvml_init(libnvml):
+    nvml_check_error(libnvml.nvmlInit_v2())
+
+def nvml_shutdown(libnvml):
+    nvml_check_error(libnvml.nvmlShutdown())
+
+def nvml_get_device(libnvml, index):
+    device = ctypes.c_void_p(0)
+
+    nvml_check_error(
+        libnvml.nvmlDeviceGetHandleByIndex_v2(
+            ctypes.c_uint(index), ctypes.pointer(device)
+        )
+    )
+
+    return device.value
+
+def set_device_clock_offset(libnvml, handle, offset):
+    nvml_check_error(
+        libnvml.nvmlDeviceSetGpcClkVfOffset(
+            ctypes.c_void_p(handle), ctypes.c_int(offset)
+        )
+    )
 
 
 def write_profile(prof, conf):
     if any(opt in prof for opt in EC_OPTS):
-        ec_conf = conf['ec']
-        ec = None
+        ec_conf = conf[EC_CONF_NAME]
+        ec = None # load ec file
+        print('load ec file')
         try:
             if SHIFT_NAME in prof:
-                pass
+                ec_write_enum(ec, prof[SHIFT_NAME], ec_conf[SHIFT_NAME], SHIFT_NAME)
             if FANMODE_NAME in prof:
-                pass
+                ec_write_enum(ec, prof[FANMODE_NAME], ec_conf[FANMODE_NAME], FANMODE_NAME)
         finally:
             pass # close ec file
 
-    num_cores = conf['msr']['num_cores']
+    num_cores = conf[MSR_CONF_NAME][MSR_NUM_CORES_NAME]
     if TURBO_NAME in prof:
-        pass
+        write_turbo_boosts(prof[TURBO_NAME], num_cores)
     if UNDERVOLT_NAME in prof:
-        pass
+        write_undervolt(prof[UNDERVOLT_NAME], num_cores)
 
     if any(opt in prof for opt in NV_OPTS):
-        libnvml_path = conf['nv']['libnvml']
+        libnvml_path = conf[NV_CONF_NAME][NV_LIBNVML_NAME]
+        print('load libnvml')
         try:
             if NVCLOCK_NAME in prof:
                 pass
@@ -76,13 +156,53 @@ def write_profile(prof, conf):
             pass # shutdown nvml
 
 
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        raise FileNotFoundError(CONFIG_FILE)
+
+    f_conf = open(CONFIG_FILE, 'rb')
+    conf = load_toml(f_conf)
+    f_conf.close()
+
+    return conf
+
+def load_profile(prof):
+    if not os.path.exists(PROFILES_FILE):
+        raise FileNotFoundError(PROFILES_FILE)
+    
+    f_prof = open(PROFILES_FILE, 'rb')
+    all_profiles = load_toml(f_prof)
+    f_prof.close()
+
+    if prof not in all_profiles:
+        raise ValueError(f'Profile {prof} does not exist')
+
+    return all_profiles[prof]
+
+def parse_args():
+    parser = ArgumentParser()
+
+    g = parser.add_mutually_exclusive_group(required=True)
+    g.add_argument('--profile', '-p', help='Applies a profile')
+    g.add_argument('--bat-limit', '-b', help='Sets battery limit', type=int)
+    g.add_argument('--cooler-boost', '-c', action='store_true', help='Toggles cooler boost')
+
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    print(args)
+
     conf = load_config()
     
-    if len(sys.argv) != 2:
-        raise Exception('Can only provide exactly one argument')
+    if not args.profile:
+        print('Setting bat limit and cooler boost not implemented yet...')
+        return
 
-    prof = load_profile(sys.argv[1])
+    prof = load_profile(args.profile)
+    print(prof)
     write_profile(prof, conf)
 
 if __name__ == '__main__':

@@ -31,8 +31,9 @@ sudo chmod 755 /usr/local/bin/ice-gf66
 The script sources its configs and profiles from the `/etc/ice-gf66/` directory.
 Copy these config files there.
 ```
-sudo cp config.toml /usr/local/bin/config.toml
-sudo cp profiles.toml /usr/local/bin/profiles.toml
+sudo mkdir /etc/ice-gf66
+sudo cp config.toml /etc/ice-gf66/config.toml
+sudo cp profiles.toml /etc/ice-gf66/profiles.toml
 ```
 Note if a `config.toml` or `profiles.toml` are present in the current working directory,
 then the script will source those instead.

@@ -1,3 +1,12 @@
+# EC memory layout config
+# Refer to these links for help with these options
+#
+# https://github.com/BeardOverflow/msi-ec
+# https://github.com/dmitry-s93/MControlCenter
+#
+# This code includes memory layouts for 17 different EC memory versions:
+# https://github.com/BeardOverflow/msi-ec/blob/main/msi-ec.c
+# To cross reference
 [ec]
 file = "/sys/kernel/debug/ec/ec0/io"
 
@@ -21,8 +30,15 @@ auto = 0x0D
 silent = 0x1D
 advanced = 0x8D
 
+
+# Use 'ls /dev/cpu' to verify the amount of cores of the Intel CPU
+# Don't simply use the amount of cores advertised on your system
+# because of Hyperthreading and P/E-cores differences
 [msr]
 num_cores = 12
 
+
+# The location of the NVML shared object.
+# Arch Linux puts in here but your distro might put it somewhere else.
 [nv]
 libnvml = "/usr/lib/libnvidia-ml.so"

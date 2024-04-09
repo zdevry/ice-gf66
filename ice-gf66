@@ -186,7 +186,6 @@ def write_profile(prof, conf):
     if any(opt in prof for opt in EC_OPTS):
         ec_conf = conf[EC_CONF_NAME]
 
-        print('Opening EC memory file')
         with open(ec_conf[EC_FILE_NAME], 'r+b') as ec:
             if SHIFT_NAME in prof:
                 name = prof[SHIFT_NAME]

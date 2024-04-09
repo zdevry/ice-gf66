@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
 
+# Copyright (c) 2024  zijkdefry
+#
+# This file is part of ice-gf66
+#
+# ice-gf66 is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import ctypes
@@ -23,6 +39,9 @@ UVOLT_PLANE_BYTES = {
     'digital_io': b'\x05',
 }
 
+NVML_PERSISTENCE_DISABLED = 0
+NVML_PERSISTENCE_ENABLED = 1
+
 SHIFT_NAME = 'shift'
 FANMODE_NAME = 'fanmode'
 EC_OPTS = (SHIFT_NAME, FANMODE_NAME)
@@ -33,6 +52,8 @@ UNDERVOLT_NAME = 'undervolt'
 NVCLOCK_NAME = 'nvclock'
 NVOFFSET_NAME = 'nvoffset'
 NV_OPTS = (NVCLOCK_NAME, NVOFFSET_NAME)
+NV_CLOCK_MIN = 'min'
+NV_CLOCK_MAX = 'max'
 
 EC_CONF_NAME = 'ec'
 MSR_CONF_NAME = 'msr'
@@ -40,18 +61,24 @@ NV_CONF_NAME = 'nv'
 
 EC_ADDR_NAME = 'addr'
 EC_ENUM_NAME = 'enum'
+EC_FILE_NAME = 'file'
 EC_BAT_LIMIT_NAME = 'bat_limit'
 EC_COOLER_BOOST_NAME = 'cooler_boost'
 
 MSR_NUM_CORES_NAME = 'num_cores'
 NV_LIBNVML_NAME = 'libnvml'
 
-CONFIG_FILE = 'config.toml'
-PROFILES_FILE = 'profiles.toml'
+CONFIG_FILE_LOCAL = './config.toml'
+CONFIG_FILE_GLOBAL = '/etc/ice-gf66/config.toml'
+PROFILES_FILE_LOCAL = './profiles.toml'
+PROFILES_FILE_GLOBAL = '/etc/ice-gf66/profiles.toml'
 
 
 def ec_write_byte(ec, byte, addr):
-    print(f'ec write 0x{byte:02x} to 0x{addr:02x}')
+    write_bytes = bytes([byte])
+
+    ec.seek(addr)
+    ec.write(write_bytes)
 
 def ec_write_enum(ec, name, conf, modename):
     ec_enum = conf[EC_ENUM_NAME]
@@ -62,19 +89,32 @@ def ec_write_enum(ec, name, conf, modename):
     addr = conf[EC_ADDR_NAME]
     ec_write_byte(ec, val, addr)
 
+def ec_set_bat_limit(limit, bat_limit_addr, ec_filename):
+    with open(ec_filename, 'r+b') as ec:
+        ec_write_byte(ec, limit + 128, bat_limit_addr)
+
+def ec_toggle_cooler_boost(cooler_boost_addr, ec_filename):
+    with open(ec_filename, 'r+b') as ec:
+        ec.seek(cooler_boost_addr)
+        b = ec.read(1)[0]
+
+        ec_write_byte(ec, b ^ 0x80, cooler_boost_addr)
+
 
 def wrmsr_on_cpu(reg, cpu, regval):
-    msr = MSR_FILE_FORMAT.format(cpu)
-    wrnum = int.from_bytes(regval, byteorder='little')
-    print(f'Write {regval} (0x{wrnum:016x}) to register {reg:04x} : {msr}')
+    msr_name = MSR_FILE_FORMAT.format(cpu)
+    with open(msr_name, 'r+b') as msr:
+        msr.seek(reg)
+        msr.write(regval)
 
 def wrmsr_on_all_cpus(reg, regval, num_cores):
     for i in range(num_cores):
         wrmsr_on_cpu(reg, i, regval)
 
 def write_turbo_boosts(boosts, num_cores):
-    tailing_boosts = 8 - len(boosts)
-    all_boosts = boosts + boosts[-1:-2:-1] * tailing_boosts
+    nb = len(boosts)
+    tailing_boosts = 8 - nb
+    all_boosts = boosts + boosts[nb-1:nb] * tailing_boosts
 
     wrmsr_on_all_cpus(TURBO_REGISTER, bytes(all_boosts), num_cores)
 
@@ -111,79 +151,137 @@ def nvml_get_device(libnvml, index):
 
     nvml_check_error(
         libnvml.nvmlDeviceGetHandleByIndex_v2(
-            ctypes.c_uint(index), ctypes.pointer(device)
-        )
-    )
+            ctypes.c_uint(index), ctypes.pointer(device)))
 
     return device.value
 
-def set_device_clock_offset(libnvml, handle, offset):
+def nvml_persistence(libnvml, handle):
+    persistence = ctypes.c_int()
+    
+    nvml_check_error(
+        libnvml.nvmlDeviceGetPersistenceMode(
+            ctypes.c_void_p(handle), ctypes.pointer(persistence)))
+    
+    return persistence.value
+
+def nvml_enable_persistence(libnvml, handle):
+    nvml_check_error(
+        libnvml.nvmlDeviceSetPersistenceMode(
+            ctypes.c_void_p(handle), NVML_PERSISTENCE_ENABLED))
+
+def nvml_clock_limit(libnvml, handle, min_clock, max_clock):
+    nvml_check_error(
+        libnvml.nvmlDeviceSetGpuLockedClocks(
+            ctypes.c_void_p(handle),
+            ctypes.c_uint(min_clock),
+            ctypes.c_uint(max_clock)))
+
+def nvml_clock_offset(libnvml, handle, offset):
     nvml_check_error(
         libnvml.nvmlDeviceSetGpcClkVfOffset(
-            ctypes.c_void_p(handle), ctypes.c_int(offset)
-        )
-    )
+            ctypes.c_void_p(handle), ctypes.c_int(offset)))
 
 
 def write_profile(prof, conf):
     if any(opt in prof for opt in EC_OPTS):
         ec_conf = conf[EC_CONF_NAME]
-        ec = None # load ec file
-        print('load ec file')
-        try:
+
+        print('Opening EC memory file')
+        with open(ec_conf[EC_FILE_NAME], 'r+b') as ec:
             if SHIFT_NAME in prof:
-                ec_write_enum(ec, prof[SHIFT_NAME], ec_conf[SHIFT_NAME], SHIFT_NAME)
+                name = prof[SHIFT_NAME]
+                print(f'Setting shift mode to {name}')
+                ec_write_enum(ec, name, ec_conf[SHIFT_NAME], SHIFT_NAME)
             if FANMODE_NAME in prof:
-                ec_write_enum(ec, prof[FANMODE_NAME], ec_conf[FANMODE_NAME], FANMODE_NAME)
-        finally:
-            pass # close ec file
+                name = prof[FANMODE_NAME]
+                print(f'Setting fan mode to {name}')
+                ec_write_enum(ec, name, ec_conf[FANMODE_NAME], FANMODE_NAME)
 
     num_cores = conf[MSR_CONF_NAME][MSR_NUM_CORES_NAME]
     if TURBO_NAME in prof:
-        write_turbo_boosts(prof[TURBO_NAME], num_cores)
+        boosts = prof[TURBO_NAME]
+        print(f'Applying turbo boosts of {boosts}')
+        write_turbo_boosts(boosts, num_cores)
     if UNDERVOLT_NAME in prof:
-        write_undervolt(prof[UNDERVOLT_NAME], num_cores)
+        undervolt = prof[UNDERVOLT_NAME]
+        print('Applying undervolts:')
+        for plane in undervolt:
+            plane_uvolt = undervolt[plane]
+            print(f'{plane}: {plane_uvolt} (-{plane_uvolt / 1.024:.1f} mV)')
+        write_undervolt(undervolt, num_cores)
 
     if any(opt in prof for opt in NV_OPTS):
         libnvml_path = conf[NV_CONF_NAME][NV_LIBNVML_NAME]
-        print('load libnvml')
+        libnvml = ctypes.cdll.LoadLibrary(libnvml_path)
+        print('Initialising NVML')
+        nvml_init(libnvml)
         try:
+            dev = nvml_get_device(libnvml, 0)
+
+            if nvml_persistence(libnvml, dev) == NVML_PERSISTENCE_DISABLED:
+                print('Persistence mode is disabled, enabling persistence')
+                nvml_enable_persistence(libnvml, dev)
+            else:
+                print('Persistence mode is already enabled, continuing...')
+
             if NVCLOCK_NAME in prof:
-                pass
+                limits = prof[NVCLOCK_NAME]
+                min_clock = limits[NV_CLOCK_MIN]
+                max_clock = limits[NV_CLOCK_MAX]
+
+                print(f'Setting GPU lock limit to {min_clock}, {max_clock} MHz')
+                nvml_clock_limit(libnvml, dev, min_clock, max_clock)
             if NVOFFSET_NAME in prof:
-                pass
+                offset = prof[NVOFFSET_NAME]
+                print(f'Setting GPU clock offset of {offset} MHz')
+                nvml_clock_offset(libnvml, dev, prof[NVOFFSET_NAME])
         finally:
-            pass # shutdown nvml
+            print('Shutting down NVML')
+            nvml_shutdown(libnvml)
 
 
 def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        raise FileNotFoundError(CONFIG_FILE)
+    filepath = None
+    if os.path.exists(CONFIG_FILE_LOCAL):
+        filepath = CONFIG_FILE_LOCAL
+    elif os.path.exists(CONFIG_FILE_GLOBAL):
+        filepath = CONFIG_FILE_GLOBAL
+    else:
+        raise FileNotFoundError('No config file available')
+    
+    print(f'Using config file: {filepath}')
 
-    f_conf = open(CONFIG_FILE, 'rb')
-    conf = load_toml(f_conf)
-    f_conf.close()
-
-    return conf
+    with open(filepath, 'rb') as f_conf:
+        return load_toml(f_conf)
 
 def load_profile(prof):
-    if not os.path.exists(PROFILES_FILE):
-        raise FileNotFoundError(PROFILES_FILE)
+    filepath = None
+    if os.path.exists(PROFILES_FILE_LOCAL):
+        filepath = PROFILES_FILE_LOCAL
+    elif os.path.exists(PROFILES_FILE_GLOBAL):
+        filepath = PROFILES_FILE_GLOBAL
+    else:
+        raise FileNotFoundError('No profiles file available')
     
-    f_prof = open(PROFILES_FILE, 'rb')
-    all_profiles = load_toml(f_prof)
-    f_prof.close()
+    print(f'Using profiles file: {filepath}')
 
-    if prof not in all_profiles:
-        raise ValueError(f'Profile {prof} does not exist')
+    with open(filepath, 'rb') as f_prof:
+        all_profiles = load_toml(f_prof)
 
-    return all_profiles[prof]
+        if prof not in all_profiles:
+            raise ValueError(f'Profile {prof} does not exist')
+        return all_profiles[prof]
+
+def load_profile_from_file(filepath):
+    with open(filepath, 'rb') as f:
+        return load_toml(f)
 
 def parse_args():
     parser = ArgumentParser()
 
     g = parser.add_mutually_exclusive_group(required=True)
     g.add_argument('--profile', '-p', help='Applies a profile')
+    g.add_argument('--file', '-f', help='Applies a profile from a file')
     g.add_argument('--bat-limit', '-b', help='Sets battery limit', type=int)
     g.add_argument('--cooler-boost', '-c', action='store_true', help='Toggles cooler boost')
 
@@ -193,16 +291,31 @@ def parse_args():
 def main():
     args = parse_args()
 
-    print(args)
+    if os.geteuid() != 0:
+        raise PermissionError('Must have root permissions to run the script')
 
     conf = load_config()
     
-    if not args.profile:
-        print('Setting bat limit and cooler boost not implemented yet...')
+    if (args.bat_limit):
+        print(f'Setting battery charging limit to {args.bat_limit}%')
+        ec_conf = conf[EC_CONF_NAME]
+        ec_set_bat_limit(
+            args.bat_limit,
+            ec_conf[EC_BAT_LIMIT_NAME][EC_ADDR_NAME],
+            ec_conf[EC_FILE_NAME])
+        return
+    
+    if (args.cooler_boost):
+        print('Toggling cooler boost')
+        ec_conf = conf[EC_CONF_NAME]
+        ec_toggle_cooler_boost(
+            ec_conf[EC_COOLER_BOOST_NAME][EC_ADDR_NAME],
+            ec_conf[EC_FILE_NAME])
         return
 
-    prof = load_profile(args.profile)
-    print(prof)
+    prof = load_profile(args.profile) \
+        if args.profile \
+        else load_profile_from_file(args.file)
     write_profile(prof, conf)
 
 if __name__ == '__main__':

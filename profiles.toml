@@ -1,4 +1,4 @@
-# Add another TOML section/table to create another profile accessible by the -p option
+# Add another TOML section/table to create another profile that can be applied by the -p option
 [gaming]
 
 # Shift/Performance mode, affects performance and fan speeds.
@@ -15,11 +15,11 @@ fanmode = 'auto'
 # Accepts a table where each entry consists of which component to undervolt
 # and their respective undervolt value
 # available components: core, igpu, cache, agent, analog_io, digital_io
-undervolt = { core = 32, cache = 32 }
+undervolt = { core = 65, cache = 65 }
 
 # Turbo boost ratios. Each element of the array gives a turbo boost ratio for when
 # a certain amount of cores are active. For example, turbo = [36] sets the turbo
-# boost ratios for to 36 in all cases. turbo = [36, 35, 34, 33] sets the turbo boost ratios
+# boost ratios to 36 in all cases. turbo = [36, 35, 34, 33] sets the turbo boost ratios
 # to 36 for 1-core load, 35 for 2-core load, 34 for 3-core load, and 33 for 4 to 8-core load
 # If turbo boost is enabled, the ratios are the CPU clock limit in multiples of 100 MHz
 # max 8 elements can be specified
@@ -29,5 +29,5 @@ turbo = [36]
 nvclock = { min = 210, max = 1695 }
 
 # Applies an offset to the clock of NVIDIA GPU, specified in units of MHz.
-# If combined with the above option, it will underclock the GPU
+# If combined with the above option, will underclock the GPU
 nvoffset = 150

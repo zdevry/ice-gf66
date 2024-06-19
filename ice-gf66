@@ -21,6 +21,7 @@ import os
 import ctypes
 from argparse import ArgumentParser
 from tomllib import load as load_toml
+from subprocess import run as run_subprocess
 
 
 MSR_FILE_FORMAT = '/dev/cpu/{}/msr'
@@ -99,6 +100,21 @@ def ec_toggle_cooler_boost(cooler_boost_addr, ec_filename):
         b = ec.read(1)[0]
 
         ec_write_byte(ec, b ^ 0x80, cooler_boost_addr)
+
+def is_ec_sys_loaded():
+    with open('/proc/modules', 'r') as f:
+        for line in f:
+            mod = line.split(' ')[0]
+            if mod == 'ec_sys':
+                return True
+    return False
+
+def check_ec_sys_loaded():
+    if is_ec_sys_loaded():
+        print('ec_sys kernel module loaded, continuing...')
+        return
+    print('ec_sys kernel module not loaded, loading...')
+    run_subprocess(['modprobe', 'ec_sys', 'write_support=1'])
 
 
 def wrmsr_on_cpu(reg, cpu, regval):
@@ -186,6 +202,7 @@ def write_profile(prof, conf):
     if any(opt in prof for opt in EC_OPTS):
         ec_conf = conf[EC_CONF_NAME]
 
+        check_ec_sys_loaded()
         with open(ec_conf[EC_FILE_NAME], 'r+b') as ec:
             if SHIFT_NAME in prof:
                 name = prof[SHIFT_NAME]
@@ -296,6 +313,7 @@ def main():
     conf = load_config()
     
     if (args.bat_limit):
+        check_ec_sys_loaded()
         print(f'Setting battery charging limit to {args.bat_limit}%')
         ec_conf = conf[EC_CONF_NAME]
         ec_set_bat_limit(
@@ -305,6 +323,7 @@ def main():
         return
     
     if (args.cooler_boost):
+        check_ec_sys_loaded()
         print('Toggling cooler boost')
         ec_conf = conf[EC_CONF_NAME]
         ec_toggle_cooler_boost(

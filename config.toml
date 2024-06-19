@@ -6,7 +6,6 @@
 #
 # This code includes memory layouts for 17 different EC memory versions:
 # https://github.com/BeardOverflow/msi-ec/blob/main/msi-ec.c
-# To cross reference
 [ec]
 file = "/sys/kernel/debug/ec/ec0/io"
 
@@ -38,7 +37,7 @@ advanced = 0x8D
 num_cores = 12
 
 
-# The location of the NVML shared object.
-# Arch Linux puts in here but your distro might put it somewhere else.
+# The location of the NVML library file.
+# Arch Linux puts it in here but your distro might put it somewhere else.
 [nv]
 libnvml = "/usr/lib/libnvidia-ml.so"
